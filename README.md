@@ -1,37 +1,6 @@
 # Metabase Code Semantic Search
 
-This repository contains tools for creating a semantic search system for Metabase's codebase, enabling natural language queries against Clojure code.
-
-## Problem Statement
-
-We needed a way to understand and navigate the Metabase codebase using natural language queries. Traditional text-based searches like grep are limited to exact keyword matching, making it difficult to find code based on concepts or functionality.
-
-The goal was to create a semantic search pipeline that would:
-1. Extract function definitions from Clojure code
-2. Generate embeddings for these functions using OpenAI
-3. Store them in a vector database (ChromaDB)
-4. Provide a query interface for natural language search
-
-## What We've Accomplished
-
-1. **Function Extraction**: We've created a process using clj-kondo to extract function definitions from Clojure files, capturing function names, namespaces, and source code locations.
-
-2. **Embedding Generation**: We've built a Python script that:
-   - Takes clj-kondo analysis data
-   - Extracts function code and metadata
-   - Generates embeddings using OpenAI's API
-   - Stores these embeddings in a structured format
-
-3. **Vector Database**: We've implemented ChromaDB integration to:
-   - Store function embeddings in a persistent database
-   - Enable semantic search with proper metadata
-   - Support fast query operations
-
-4. **Search Interface**: We've created a command-line tool that:
-   - Takes natural language queries
-   - Converts queries to embeddings
-   - Searches the vector database
-   - Returns relevant code snippets ranked by similarity
+A semantic code search tool for the Metabase backend codebase using vector embeddings and vector search, enabling natural language queries against Clojure code.
 
 ## Usage
 
@@ -39,34 +8,46 @@ The goal was to create a semantic search pipeline that would:
 # Step 1: Extract function definitions using clj-kondo
 clj-kondo --config '{:analysis true :output {:format :edn}}' --lint src/metabase/channel/render > analysis-body.edn
 
-# Step 2: Extract functions and generate embeddings
-python main.py extract analysis-body.edn --output embeddings.json
+# Step 2: Extract functions from the analysis data
+python main.py extract analysis-body.edn --output chunks.json
 
-# Step 3: Load embeddings into ChromaDB
+# Step 3: Generate embeddings from the extracted function chunks
+python main.py embed chunks.json --output embeddings.json
+
+# Step 4: Load embeddings into ChromaDB
 python main.py load embeddings.json --db-path ./chroma_db
 
-# Step 4: Search for code using natural language
+# Step 5: Search for code using natural language
 python main.py search "how to render a PNG image" --n-results 5
 ```
 
-## Technical Challenges
+### Command Details
 
-1. **Custom Macro Handling**: We discovered that clj-kondo doesn't inherently recognize function definitions created via custom macros like `mu/defmethod`. This requires additional configuration or post-processing to fully capture all function definitions.
+#### Extract
+Extracts function chunks from clj-kondo analysis data, including defmethod implementations.
+```bash
+python main.py extract analysis-body.edn --output chunks.json --rel-dir ../..
+```
 
-2. **Embedding Context**: Determining the right amount of context to include in embeddings (e.g., just the function body, or function with surrounding context) to get the most relevant search results.
+#### Embed
+Generates embeddings for function chunks using OpenAI's API in batches.
+```bash
+python main.py embed chunks.json --output embeddings.json --model text-embedding-3-small --batch-size 100
+```
 
-3. **Database Management**: Structuring the ChromaDB collections and metadata to support efficient semantic search while maintaining all necessary context for results.
+#### Load
+Loads embeddings into ChromaDB for vector search.
+```bash
+python main.py load embeddings.json --db-path ./chroma_db --collection clojure_code
+```
 
-## Future Work
+#### Search
+Searches for code using natural language queries.
+```bash
+python main.py search "your query here" --n-results 5 --model text-embedding-3-small
+```
 
-1. Extend the extraction to capture all function types, including those defined through custom macros like `mu/defmethod`
-2. Implement a web interface for easier searching
-3. Add support for incremental updates to avoid re-embedding the entire codebase
-4. Explore fine-tuning models on Clojure code to improve embedding quality
+## Next Steps
 
-## Tools Used
-
-- clj-kondo: Static analyzer for Clojure code
-- OpenAI API: For generating text embeddings
-- ChromaDB: Vector database for storing and querying embeddings
-- Python: For script implementation and database management
+- Implementation as a full MCP server for direct integration with Claude Code
+- Test what impact this has on claude's ability to answer vague backend questions
