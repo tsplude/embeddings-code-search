@@ -21,6 +21,7 @@ python main.py load embeddings.json --db-path ./chroma_db
 python main.py search "how to render a PNG image" --n-results 5
 ```
 
+
 Example search:
 ```bash
 >> python main.py search "how are funnel charts rendered in notifications?"
@@ -66,6 +67,51 @@ metabase.channel.render.js.svg/funnel
 ================================================================================
 ```
 
+# Test Results
+_Full notes in test-questions.md_
+
+
+Steps:
+  - Two new API keys
+    - ON -> ...tyler_uius
+    - OFF -> ...tyler_tmqs
+  - Run claude with semantic search *ON*
+  - Send questions one at a time
+  - Record usage, save log
+  - Accidentally delete log (oops)
+  - Run claude with semantic search *OFF*
+  - Send questions one at a time
+  - Record usage, save log in `semantic_off.log`
+
+<details>
+  <summary>Question list</summary>
+  
+1. How does Metabase handle database connection pooling?
+2. What's the process for rendering dashboard cards in PDF exports?
+3. How does Metabase implement caching for query results?
+4. How does the authentication system handle JWT tokens?
+5. How are database permissions enforced in the query processor?
+6. What's the implementation of data sandboxing in Metabase?
+7. How does Metabase handle timezone conversions for queries?
+8. What's the process for scheduling and sending dashboard subscriptions?
+9. How does Metabase implement custom expressions in the query builder?
+10. How are database driver plugins loaded at runtime?
+11. What's the implementation of the audit system for tracking user actions?
+12. How does Metabase handle parameter passing in embedded dashboards?
+13. What's the process for syncing database metadata with Metabase?
+14. How does Metabase implement native query execution with variables?
+15. What's the implementation of data model persistence in Metabase?
+16. How does the alert system detect and notify about threshold violations?
+17. What's the architecture of the public sharing feature?
+18. How does Metabase handle database-specific SQL dialects?
+19. What's the process for migrating application data between versions?
+20. How does Metabase implement custom geojson map visualizations on the backend?
+</details>
+
+<img width="751" alt="image" src="https://github.com/user-attachments/assets/e304abda-32d1-4e77-8b55-9bdde68ca3ce" />
+
+
+
 ### Command Details
 
 #### Extract
@@ -100,5 +146,6 @@ python main.py search "your query here" --n-results 5 --model text-embedding-3-s
 
 ## Next Steps
 
-- Implementation as a full MCP server for direct integration with Claude Code
-- Test what impact this has on claude's ability to answer vague backend questions
+- Further testing
+- Analyze quality and accuracy of the responses
+
