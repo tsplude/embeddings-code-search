@@ -10,26 +10,28 @@ import uuid
 import hashlib
 import dotenv
 dotenv.load_dotenv('.env')
+from search import search_code
 
 try:
     import chromadb
 except ImportError:
     print("ChromaDB not installed. Run: pip install chromadb")
 
-def generate_embeddings(code_chunks, output_file="embeddings.json", model="text-embedding-3-small"):
+def generate_embeddings(code_chunks, output_file="embeddings.json", model="text-embedding-3-small", batch_size=100):
     """
-    Generate embeddings for a list of code chunks using OpenAI's API.
+    Generate embeddings for a list of code chunks using OpenAI's API in batches.
     
     Args:
         code_chunks (list): List of dictionaries containing code chunks and metadata
         output_file (str): Path to save the JSON file with embeddings
         model (str): OpenAI model to use for embeddings
+        batch_size (int): Number of texts to batch in a single API call
         
     Returns:
         DataFrame: Pandas DataFrame with code chunks and embeddings
     """
     start_time = time.time()
-    print(f"Starting embedding generation using model {model}...")
+    print(f"Starting embedding generation using model {model} with batch size {batch_size}...")
     
     # Ensure OpenAI API key is available
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -42,51 +44,60 @@ def generate_embeddings(code_chunks, output_file="embeddings.json", model="text-
     # Create DataFrame from code chunks
     df = pd.DataFrame.from_dict(code_chunks)
     
-    # Define embedding function
-    def get_embedding(text, model=model):
-        # Replace newlines with spaces for better embedding quality
-        text = text.replace("\n", " ")
-        
-        # Rate limiting - simple protection against hitting API limits
-        #time.sleep(0.5)
-        
-        try:
-            # Get embeddings from OpenAI
-            response = client.embeddings.create(input=[text], model=model)
-            # Extract the embedding from the response
-            embedding = response.data[0].embedding
-            return embedding
-        except Exception as e:
-            print(f"Error generating embedding: {e}")
-            return None
-    
     # Generate embeddings for each code chunk
     print(f"Generating embeddings for {len(df)} code chunks...")
     
     # Create a progress tracking mechanism
     total = len(df)
     
-    # Generate embeddings for each function
+    # Initialize embedding column
     df['embedding'] = None
     api_call_count = 0
     api_errors = 0
     
-    for idx, row in df.iterrows():
-        # Combine function info and code for better context in embedding
-        text_to_embed = f"{row['namespace']}/{row['name']}\n{row['code']}"
+    # Process in batches
+    batches = [range(i, min(i + batch_size, len(df))) for i in range(0, len(df), batch_size)]
+    
+    for batch_idx, batch_range in enumerate(batches):
+        batch_start_time = time.time()
         
-        # Get embedding
-        embedding = get_embedding(text_to_embed)
-        df.at[idx, 'embedding'] = embedding
+        # Prepare batch texts
+        batch_texts = []
+        batch_indices = []
         
-        # Count API calls and errors
-        api_call_count += 1
-        if embedding is None:
+        for idx in batch_range:
+            row = df.iloc[idx]
+            # Combine function info and code for better context in embedding
+            text_to_embed = f"{row['namespace']}/{row['name']}\n{row['code']}"
+            # Replace newlines with spaces for better embedding quality
+            text_to_embed = text_to_embed.replace("\n", " ")
+            batch_texts.append(text_to_embed)
+            batch_indices.append(idx)
+        
+        try:
+            # Get embeddings for batch from OpenAI
+            response = client.embeddings.create(input=batch_texts, model=model)
+            
+            # Process results
+            for i, embedding_data in enumerate(response.data):
+                df_idx = batch_indices[i]
+                df.at[df_idx, 'embedding'] = embedding_data.embedding
+            
+            # Count successful API call
+            api_call_count += 1
+            
+        except Exception as e:
+            print(f"Error generating embeddings for batch {batch_idx+1}: {e}")
             api_errors += 1
+            # Mark all items in the failed batch as None
+            for idx in batch_indices:
+                df.at[idx, 'embedding'] = None
         
         # Print progress
-        if idx % 10 == 0 or idx == total - 1:
-            print(f"Progress: {idx+1}/{total} ({((idx+1)/total)*100:.1f}%)")
+        batch_items_processed = min((batch_idx + 1) * batch_size, total)
+        print(f"Progress: Batch {batch_idx+1}/{len(batches)} - {batch_items_processed}/{total} items " +
+              f"({(batch_items_processed/total)*100:.1f}%) - " + 
+              f"Batch time: {time.time() - batch_start_time:.2f}s")
     
     # Calculate success rate
     success_rate = ((api_call_count - api_errors) / api_call_count) * 100 if api_call_count > 0 else 0
@@ -498,89 +509,7 @@ def populate_chromadb(embeddings_data, db_path="./chroma_db", collection_name="m
     return collection
 
 
-def search_code(query, db_path="./chroma_db", collection_name="clojure_code", model="text-embedding-3-small", n_results=5):
-    """
-    Search for code in ChromaDB using semantic search.
-    
-    Args:
-        query (str): Natural language query
-        db_path (str): Path to ChromaDB data
-        collection_name (str): Name of the collection
-        model (str): OpenAI model to use for query embedding
-        n_results (int): Number of results to return
-        
-    Returns:
-        List of search results
-    """
-    start_time = time.time()
-    print(f"Starting semantic search for: '{query}'")
-    
-    try:
-        import chromadb
-    except ImportError:
-        raise ImportError("ChromaDB not installed. Run: pip install chromadb")
-    
-    # Initialize OpenAI client for query embedding
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set")
-    
-    client = OpenAI(api_key=api_key)
-    
-    # Get query embedding
-    def get_query_embedding(text, model=model):
-        text = text.replace("\n", " ")
-        response = client.embeddings.create(input=[text], model=model)
-        return response.data[0].embedding
-    
-    print(f"Generating embedding for query using model {model}...")
-    embedding_start_time = time.time()
-    query_embedding = get_query_embedding(query)
-    embedding_time = time.time() - embedding_start_time
-    print(f"Query embedding generated in {embedding_time:.2f} seconds")
-    
-    # Initialize ChromaDB client
-    db_client = chromadb.PersistentClient(path=db_path)
-    
-    # Get collection
-    try:
-        collection = db_client.get_collection(collection_name)
-        collection_size = collection.count()
-        print(f"Connected to collection '{collection_name}' with {collection_size} items")
-    except ValueError:
-        print(f"Collection '{collection_name}' does not exist. Please create it first.")
-        return []
-    
-    # Query the collection
-    print(f"Searching collection for similar code...")
-    search_start_time = time.time()
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=n_results,
-        include=["documents", "metadatas", "distances"]
-    )
-    search_time = time.time() - search_start_time
-    print(f"Search completed in {search_time:.2f} seconds")
-    
-    # Format and return results
-    formatted_results = []
-    for i in range(len(results["ids"][0])):
-        result = {
-            "id": results["ids"][0][i],
-            "document": results["documents"][0][i],
-            "metadata": results["metadatas"][0][i],
-            "distance": results["distances"][0][i]
-        }
-        formatted_results.append(result)
-    
-    # Calculate and report execution stats
-    end_time = time.time()
-    execution_time = end_time - start_time
-    
-    print(f"\nSearch completed in {execution_time:.2f} seconds")
-    print(f"Found {len(formatted_results)} results")
-    
-    return formatted_results
+# The search_code function has been moved to search.py
 
 
 def save_function_chunks(function_chunks, output_file="chunks.json"):
@@ -630,6 +559,7 @@ def main():
     embed_parser.add_argument('chunks_file', help='Path to the JSON file containing function chunks')
     embed_parser.add_argument('--output', default='embeddings.json', help='Output file path for embeddings JSON')
     embed_parser.add_argument('--model', default='text-embedding-3-small', help='OpenAI model to use for embeddings')
+    embed_parser.add_argument('--batch-size', type=int, default=100, help='Number of texts to batch in a single API call')
     
     # Load to ChromaDB command
     load_parser = subparsers.add_parser('load', help='Load embeddings to ChromaDB')
@@ -665,7 +595,12 @@ def main():
         
         if function_chunks:
             # Generate embeddings for the loaded chunks
-            df = generate_embeddings(function_chunks, output_file=args.output, model=args.model)
+            df = generate_embeddings(
+                function_chunks, 
+                output_file=args.output, 
+                model=args.model,
+                batch_size=args.batch_size
+            )
             
             print(f"\nTo load these embeddings into ChromaDB, run:")
             print(f"python {os.path.basename(__file__)} load {args.output}")
