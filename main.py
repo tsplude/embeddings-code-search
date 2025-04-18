@@ -10,13 +10,13 @@ import uuid
 import hashlib
 import dotenv
 dotenv.load_dotenv('.env')
-from search import search_code
+from search import search_chroma
 
 try:
     import chromadb
 except ImportError:
     print("ChromaDB not installed. Run: pip install chromadb")
-
+    
 def generate_embeddings(code_chunks, output_file="embeddings.json", model="text-embedding-3-small", batch_size=100):
     """
     Generate embeddings for a list of code chunks using OpenAI's API in batches.
@@ -508,10 +508,6 @@ def populate_chromadb(embeddings_data, db_path="./chroma_db", collection_name="m
     
     return collection
 
-
-# The search_code function has been moved to search.py
-
-
 def save_function_chunks(function_chunks, output_file="chunks.json"):
     """
     Save function chunks to a JSON file.
@@ -618,12 +614,13 @@ def main():
         
     elif args.command == 'search':
         # Search code
-        results = search_code(
+        results = search_chroma(
             args.query,
             db_path=args.db_path,
             collection_name=args.collection,
             model=args.model,
-            n_results=args.n_results
+            n_results=args.n_results,
+            verbose=True
         )
         
         # Display results

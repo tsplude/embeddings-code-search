@@ -96,6 +96,7 @@ python main.py search "your query here" --n-results 5 --model text-embedding-3-s
 - Testing different embedding models
 - Testing different embedding dbs
 - Using a smarter chunking strategy
+- Use chroma's `where` query param: https://docs.trychroma.com/reference/python/collection#query
 
 ## Next Steps
 
