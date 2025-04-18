@@ -6,10 +6,10 @@ A semantic code search tool for the Metabase backend codebase using vector embed
 
 ```bash
 # Step 1: Extract function definitions using clj-kondo
-clj-kondo --config '{:analysis true :output {:format :edn}}' --lint src/metabase/channel/render > analysis-body.edn
+clj-kondo --config '{:analysis true :output {:format :json}}' --lint src/metabase/ > metabase.json
 
 # Step 2: Extract functions from the analysis data
-python main.py extract analysis-body.edn --output chunks.json
+python main.py extract metabase.json --output chunks.json
 
 # Step 3: Generate embeddings from the extracted function chunks
 python main.py embed chunks.json --output embeddings.json
@@ -19,6 +19,51 @@ python main.py load embeddings.json --db-path ./chroma_db
 
 # Step 5: Search for code using natural language
 python main.py search "how to render a PNG image" --n-results 5
+```
+
+Example search:
+```bash
+>> python main.py search "how are funnel charts rendered in notifications?"
+Starting semantic search for: 'how are funnel charts rendered in notifications?'
+Generating embedding for query using model text-embedding-3-small...
+Query embedding generated in 0.68 seconds
+Connected to collection 'clojure_code' with 25301 items
+Searching collection for similar code...
+Search completed in 0.00 seconds
+
+Search completed in 1.01 seconds
+Found 5 results
+
+Search results for: 'how are funnel charts rendered in notifications?'
+================================================================================
+Result 1 (distance: 0.8036):
+Function: metabase.channel.render.js.svg/funnel
+File: ../../src/metabase/channel/render/js/svg.clj (lines 152-158)
+----------------------------------------
+metabase.channel.render.js.svg/funnel
+(defn funnel
+  "Clojure entrypoint to render a funnel chart. Data should be vec of [[Step Measure]] where Step is {:name name :format format-options} and Measure is {:format format-options} and you go and look to frontend/src/metabase/static-viz/components/FunnelChart/types.ts for the actual format options.
+  Returns a byte array of a png file."
+  [data settings]
+  (let [svg-string (.asString (js.engine/execute-fn-name (context) "funnel" (json/encode data)
+                                                         (json/encode settings)))]
+    (svg-string->bytes svg-string)))
+
+================================================================================
+Result 2 (distance: 0.8036):
+Function: metabase.channel.render.js.svg/funnel
+File: ../../src/metabase/channel/render/js/svg.clj (lines 152-158)
+----------------------------------------
+metabase.channel.render.js.svg/funnel
+(defn funnel
+  "Clojure entrypoint to render a funnel chart. Data should be vec of [[Step Measure]] where Step is {:name name :format format-options} and Measure is {:format format-options} and you go and look to frontend/src/metabase/static-viz/components/FunnelChart/types.ts for the actual format options.
+  Returns a byte array of a png file."
+  [data settings]
+  (let [svg-string (.asString (js.engine/execute-fn-name (context) "funnel" (json/encode data)
+                                                         (json/encode settings)))]
+    (svg-string->bytes svg-string)))
+
+================================================================================
 ```
 
 ### Command Details
@@ -46,6 +91,11 @@ Searches for code using natural language queries.
 ```bash
 python main.py search "your query here" --n-results 5 --model text-embedding-3-small
 ```
+
+## Improvements
+- Testing different embedding models
+- Testing different embedding dbs
+- Using a smarter chunking strategy
 
 ## Next Steps
 
